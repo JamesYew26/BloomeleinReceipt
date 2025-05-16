@@ -23,11 +23,10 @@ PAYMENT_METHOD_OPTIONS = ["TnG", "Bank Account", "Others"]
 DEFAULT_PAYMENT_METHOD = PAYMENT_METHOD_OPTIONS[0] # Default to TnG
 
 # --- Receipt Generation Logic ---
-# (This function remains the same, but you could add 'selected_pic' as an argument
-#  if you want to include it in the receipt text later)
 def generate_bloomelein_receipt(customer_name, customer_address, items,
                                 delivery_method_description, delivery_cost_numeric,
-                                customer_phone, pic_name=""): # Added pic_name, defaults to empty
+                                customer_phone, pic_name="",
+                                payment_method_details=""): # <<<< MODIFIED: Added payment_method_details
     """
     Generates a formatted receipt string for Bloomelein florist shop.
     """
@@ -54,6 +53,7 @@ def generate_bloomelein_receipt(customer_name, customer_address, items,
     receipt_no = f"{date_part_receipt}-{current_receipt_sequence:03d}"
 
     receipt_text = f"*🌸 {shop_name} Receipt 🌸*\n\n"
+    # Removed PIC from here as it will be part of "Paid to"
     receipt_text += f"*Date:* {date_str}\n"
     receipt_text += f"*Receipt No:* #{receipt_no}\n\n"
 
@@ -100,7 +100,14 @@ def generate_bloomelein_receipt(customer_name, customer_address, items,
 
     total_amount = item_subtotal + delivery_cost_numeric
     receipt_text += f"*Total:* {currency} {total_amount:.2f}\n"
-    receipt_text += f"*Paid to:* {pic_name}\n\n"
+
+    # <<<< MODIFIED: Updated "Paid to" section
+    paid_to_info = f"{pic_name}"
+    if payment_method_details: # Only add payment method if it exists
+        paid_to_info += f" {payment_method_details}"
+    receipt_text += f"*Paid to:* {paid_to_info}\n\n"
+    # <<<< END OF MODIFICATION
+
     receipt_text += "Thank you for your purchase! 🌷"
     return receipt_text
 
@@ -122,8 +129,10 @@ if 'item_price' not in st.session_state: st.session_state.item_price = 0.0
 if 'customer_name' not in st.session_state: st.session_state.customer_name = ""
 if 'customer_address' not in st.session_state: st.session_state.customer_address = ""
 if 'customer_phone' not in st.session_state: st.session_state.customer_phone = ""
-# NEW: Initialize selected_pic
 if 'selected_pic' not in st.session_state: st.session_state.selected_pic = DEFAULT_PIC
+# Initialize payment method states (already in your code, good)
+if 'selected_payment_method' not in st.session_state: st.session_state.selected_payment_method = DEFAULT_PAYMENT_METHOD
+if 'other_payment_method_text' not in st.session_state: st.session_state.other_payment_method_text = ""
 
 
 # --- Callback for Add Item Button ---
@@ -149,15 +158,18 @@ def clear_form_callback():
     st.session_state.generated_receipt = ""
     st.session_state.selected_delivery_option = DEFAULT_DELIVERY_OPTION_KEY
     st.session_state.delivery_charge_input = 0.0
-    st.session_state.selected_pic = DEFAULT_PIC # Reset PIC to default
+    st.session_state.selected_pic = DEFAULT_PIC
+    # Reset payment method states (already in your code, good)
+    st.session_state.selected_payment_method = DEFAULT_PAYMENT_METHOD
+    st.session_state.other_payment_method_text = ""
 
-# --- NEW: PIC Selection ---
+# --- PIC Selection ---
 st.selectbox(
     "Select Person In Charge (PIC):",
     options=PIC_OPTIONS,
-    key="selected_pic" # This will directly update st.session_state.selected_pic
+    key="selected_pic"
 )
-st.divider() # Optional: add a visual separator
+st.divider()
 
 # --- Customer Details ---
 st.header("Customer Details")
@@ -224,16 +236,15 @@ else:
     if st.session_state.delivery_charge_input != 0.0:
         st.session_state.delivery_charge_input = 0.0
 
-# --- NEW: Payment Method Section ---
+# --- Payment Method Section ---
 st.header("Payment Method")
 st.radio(
     "Select Payment Method:",
     options=PAYMENT_METHOD_OPTIONS,
     key="selected_payment_method",
-    horizontal=True # Display radio buttons horizontally
+    horizontal=True
 )
 
-# Conditionally display text input if "Others" is selected
 if st.session_state.selected_payment_method == "Others":
     st.text_input(
         "Please specify other payment method:",
@@ -258,17 +269,25 @@ if st.button("📄 Generate Receipt"):
         errors.append(f"Customer Address is required for {st.session_state.selected_delivery_option}.")
     if not st.session_state.items_list: errors.append("Please add at least one item to the order.")
 
+    final_payment_method_detail = st.session_state.selected_payment_method
+    if st.session_state.selected_payment_method == "Others":
+        if not st.session_state.other_payment_method_text.strip():
+            errors.append("Please specify the 'Other' payment method details.")
+        else:
+            final_payment_method_detail = f"Others: {st.session_state.other_payment_method_text.strip()}"
+
     if errors:
         for error in errors: st.error(error)
     else:
-        receipt = generate_bloomelein_receipt( # Pass selected_pic to the function
+        receipt = generate_bloomelein_receipt(
             customer_name=customer_name_val,
             customer_address=customer_address_val,
             items=st.session_state.items_list,
             delivery_method_description=st.session_state.selected_delivery_option,
             delivery_cost_numeric=float(actual_delivery_charge),
             customer_phone=customer_phone_val,
-            pic_name=st.session_state.selected_pic # Pass the selected PIC
+            pic_name=st.session_state.selected_pic,
+            payment_method_details=final_payment_method_detail # <<<< MODIFIED: Pass payment details
         )
         st.session_state.generated_receipt = receipt
         st.success("Receipt Generated!")
@@ -285,8 +304,7 @@ st.text_area(
 )
 
 # --- Clear Form Button ---
-if st.session_state.generated_receipt: # Only show if a receipt was generated
+if st.session_state.generated_receipt:
     st.info("Select the text above and copy (Cmd+C or Ctrl+C) to paste into WhatsApp.")
 
-# Always show the clear form button for better UX
 st.button("✨ Start New Receipt (Clear Form)", on_click=clear_form_callback)
