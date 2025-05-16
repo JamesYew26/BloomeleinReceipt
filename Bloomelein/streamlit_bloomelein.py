@@ -1,6 +1,9 @@
 import streamlit as st
 import datetime
 import re
+import pyperclip as ppclip
+# We are REMOVING streamlit-clipboard, so no import for it.
+# We are NOT adding pyperclip here because it won't copy to the USER's clipboard in a web app.
 
 # --- Configuration ---
 
@@ -26,7 +29,7 @@ DEFAULT_PAYMENT_METHOD = PAYMENT_METHOD_OPTIONS[0] # Default to TnG
 def generate_bloomelein_receipt(customer_name, customer_address, items,
                                 delivery_method_description, delivery_cost_numeric,
                                 customer_phone, pic_name="",
-                                payment_method_details=""): # <<<< MODIFIED: Added payment_method_details
+                                payment_method_details=""):
     """
     Generates a formatted receipt string for Bloomelein florist shop.
     """
@@ -53,7 +56,6 @@ def generate_bloomelein_receipt(customer_name, customer_address, items,
     receipt_no = f"{date_part_receipt}-{current_receipt_sequence:03d}"
 
     receipt_text = f"*🌸 {shop_name} Receipt 🌸*\n\n"
-    # Removed PIC from here as it will be part of "Paid to"
     receipt_text += f"*Date:* {date_str}\n"
     receipt_text += f"*Receipt No:* #{receipt_no}\n\n"
 
@@ -101,15 +103,18 @@ def generate_bloomelein_receipt(customer_name, customer_address, items,
     total_amount = item_subtotal + delivery_cost_numeric
     receipt_text += f"*Total:* {currency} {total_amount:.2f}\n"
 
-    # <<<< MODIFIED: Updated "Paid to" section
     paid_to_info = f"{pic_name}"
-    if payment_method_details: # Only add payment method if it exists
+    if payment_method_details:
         paid_to_info += f" {payment_method_details}"
     receipt_text += f"*Paid to:* {paid_to_info}\n\n"
-    # <<<< END OF MODIFICATION
 
     receipt_text += "Thank you for your purchase! 🌷"
+
+    copy_button=receipt_text
+
+    
     return receipt_text
+
 
 
 # --- Streamlit App Interface ---
@@ -130,7 +135,6 @@ if 'customer_name' not in st.session_state: st.session_state.customer_name = ""
 if 'customer_address' not in st.session_state: st.session_state.customer_address = ""
 if 'customer_phone' not in st.session_state: st.session_state.customer_phone = ""
 if 'selected_pic' not in st.session_state: st.session_state.selected_pic = DEFAULT_PIC
-# Initialize payment method states (already in your code, good)
 if 'selected_payment_method' not in st.session_state: st.session_state.selected_payment_method = DEFAULT_PAYMENT_METHOD
 if 'other_payment_method_text' not in st.session_state: st.session_state.other_payment_method_text = ""
 
@@ -143,7 +147,7 @@ def add_item_callback():
         st.session_state.items_list.append((item_description_val, item_price_val))
         st.session_state.item_desc = ""
         st.session_state.item_price = 0.0
-        st.success(f"Added: {item_description_val}")
+        # st.success(f"Added: {item_description_val}") # Feedback is optional after callback
     elif not item_description_val: st.warning("Please enter an item description.")
     else: st.warning("Please enter a valid price greater than 0.")
 
@@ -159,7 +163,6 @@ def clear_form_callback():
     st.session_state.selected_delivery_option = DEFAULT_DELIVERY_OPTION_KEY
     st.session_state.delivery_charge_input = 0.0
     st.session_state.selected_pic = DEFAULT_PIC
-    # Reset payment method states (already in your code, good)
     st.session_state.selected_payment_method = DEFAULT_PAYMENT_METHOD
     st.session_state.other_payment_method_text = ""
 
@@ -244,7 +247,6 @@ st.radio(
     key="selected_payment_method",
     horizontal=True
 )
-
 if st.session_state.selected_payment_method == "Others":
     st.text_input(
         "Please specify other payment method:",
@@ -252,7 +254,7 @@ if st.session_state.selected_payment_method == "Others":
     )
 
 # --- Generate Receipt Action ---
-st.header("Generate & Copy Receipt")
+st.header("Generate Receipt") # Changed header for simplicity
 if st.button("📄 Generate Receipt"):
     customer_name_val = st.session_state.customer_name
     customer_address_val = st.session_state.customer_address
@@ -287,24 +289,30 @@ if st.button("📄 Generate Receipt"):
             delivery_cost_numeric=float(actual_delivery_charge),
             customer_phone=customer_phone_val,
             pic_name=st.session_state.selected_pic,
-            payment_method_details=final_payment_method_detail # <<<< MODIFIED: Pass payment details
+            payment_method_details=final_payment_method_detail
         )
         st.session_state.generated_receipt = receipt
         st.success("Receipt Generated!")
 
-# --- Display Generated Receipt & Copy Option ---
+# --- Display Generated Receipt & Manual Copy Instruction ---
 st.subheader("Generated Receipt Output:")
+generated_receipt_text_value = st.session_state.get("generated_receipt", "")
+
 st.text_area(
-    "Receipt Content:",
-    value=st.session_state.generated_receipt,
+    "Receipt Content (for manual copy):", # Updated label
+    value=generated_receipt_text_value,
     height=400,
-    key="receipt_output_display",
-    help="You can select and copy the text from this box.",
-    disabled=True
+    key="receipt_output_display_view", # Key can remain if no conflict
+    help="Select all text in this box (Cmd+A or Ctrl+A), then copy (Cmd+C or Ctrl+C)."
+    # disabled=False, # Ensure it's not disabled for manual selection
 )
+if st.button('Copy'):
+    ppclip.copy(generated_receipt_text_value)
+    st.success('Text copied successfully!')
 
 # --- Clear Form Button ---
-if st.session_state.generated_receipt:
-    st.info("Select the text above and copy (Cmd+C or Ctrl+C) to paste into WhatsApp.")
+# The st.info and button visibility logic for clear form is kept as is
+if generated_receipt_text_value:
+    st.info("👆 Select the text above and copy it to paste into WhatsApp or elsewhere.")
 
 st.button("✨ Start New Receipt (Clear Form)", on_click=clear_form_callback)
